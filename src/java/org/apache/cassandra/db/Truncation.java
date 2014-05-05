@@ -24,6 +24,7 @@ import java.io.IOException;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.net.MessageOut;
 import org.apache.cassandra.net.MessagingService;
+import org.apache.cassandra.service.ClientState;
 
 /**
  * A truncate operation descriptor
@@ -34,11 +35,13 @@ public class Truncation
 
     public final String keyspace;
     public final String columnFamily;
+    public final String client;
 
-    public Truncation(String keyspace, String columnFamily)
+    public Truncation(String keyspace, String columnFamily, String client)
     {
         this.keyspace = keyspace;
         this.columnFamily = columnFamily;
+        this.client = client;
     }
 
     public MessageOut<Truncation> createMessage()
@@ -48,7 +51,8 @@ public class Truncation
 
     public String toString()
     {
-        return "Truncation(" + "keyspace='" + keyspace + '\'' + ", cf='" + columnFamily + "\')";
+        return "Truncation(" + "keyspace='" + keyspace + '\'' + ", cf='" + columnFamily + "\'" 
+        		+ ", client='" + client + "\')" ;
     }
 }
 
@@ -58,17 +62,20 @@ class TruncationSerializer implements IVersionedSerializer<Truncation>
     {
         dos.writeUTF(t.keyspace);
         dos.writeUTF(t.columnFamily);
+        dos.writeUTF(t.client);
     }
 
     public Truncation deserialize(DataInput dis, int version) throws IOException
     {
         String keyspace = dis.readUTF();
         String columnFamily = dis.readUTF();
-        return new Truncation(keyspace, columnFamily);
+        String client = dis.readUTF();
+        return new Truncation(keyspace, columnFamily, client);
     }
 
     public long serializedSize(Truncation truncation, int version)
     {
-        return TypeSizes.NATIVE.sizeof(truncation.keyspace) + TypeSizes.NATIVE.sizeof(truncation.columnFamily);
+        return TypeSizes.NATIVE.sizeof(truncation.keyspace) + TypeSizes.NATIVE.sizeof(truncation.columnFamily) 
+        		+ TypeSizes.NATIVE.sizeof(truncation.client);
     }
 }

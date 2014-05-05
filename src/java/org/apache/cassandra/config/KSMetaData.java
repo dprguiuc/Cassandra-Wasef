@@ -33,6 +33,7 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.CfDef;
 import org.apache.cassandra.thrift.KsDef;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.metadata.Metadata;
 
 import static org.apache.cassandra.utils.FBUtilities.*;
 
@@ -100,6 +101,12 @@ public final class KSMetaData
     {
         List<CFMetaData> cfDefs = Arrays.asList(CFMetaData.TraceSessionsCf, CFMetaData.TraceEventsCf);
         return new KSMetaData(Tracing.TRACE_KS, SimpleStrategy.class, ImmutableMap.of("replication_factor", "1"), true, cfDefs);
+    }
+    
+    public static KSMetaData metadataKeyspace(){
+    	List<CFMetaData> cfDefs = Arrays.asList(CFMetaData.MetadataRegistryCf, CFMetaData.MetadataLogCf);
+    	// TODO: replication factor and strategy should be configurable
+        return new KSMetaData(Metadata.MetaData_KS, SimpleStrategy.class, ImmutableMap.of("replication_factor", "3"), true, cfDefs);
     }
 
     public static KSMetaData testMetadata(String name, Class<? extends AbstractReplicationStrategy> strategyClass, Map<String, String> strategyOptions, CFMetaData... cfDefs)

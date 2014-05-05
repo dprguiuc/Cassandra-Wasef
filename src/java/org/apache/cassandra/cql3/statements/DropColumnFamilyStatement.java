@@ -40,7 +40,7 @@ public class DropColumnFamilyStatement extends SchemaAlteringStatement
 
     public void announceMigration() throws ConfigurationException
     {
-        MigrationManager.announceColumnFamilyDrop(keyspace(), columnFamily());
+        MigrationManager.announceColumnFamilyDrop(keyspace(), columnFamily(), clientState);
     }
 
     public ResultMessage.SchemaChange.Change changeType()

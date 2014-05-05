@@ -58,7 +58,7 @@ public class TruncateStatement extends CFStatement implements CQLStatement
     {
         try
         {
-            StorageProxy.truncateBlocking(keyspace(), columnFamily());
+            StorageProxy.truncateBlocking(keyspace(), columnFamily(), clientState.getUser().getName());
         }
         catch (UnavailableException e)
         {

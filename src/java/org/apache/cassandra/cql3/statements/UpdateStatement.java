@@ -18,6 +18,7 @@
 package org.apache.cassandra.cql3.statements;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.util.*;
 
 import org.apache.cassandra.cql3.*;
@@ -25,6 +26,10 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
+import org.apache.cassandra.metadata.Metadata;
+import org.apache.cassandra.metadata.MetadataLog;
+import org.apache.cassandra.metadata.MetadataRegistry;
+import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Pair;
 
@@ -128,7 +133,7 @@ public class UpdateStatement extends ModificationStatement
 
         Collection<IMutation> mutations = new LinkedList<IMutation>();
         UpdateParameters params = new UpdateParameters(variables, getTimestamp(now), getTimeToLive(), rows);
-
+               
         for (ByteBuffer key: keys)
             mutations.add(mutationForKey(cfDef, key, builder, params, cl));
 
@@ -198,20 +203,21 @@ public class UpdateStatement extends ModificationStatement
         }
         return keys;
     }
-
+    
     /**
      * Compute a row mutation for a single key
      *
      * @return row mutation
      *
      * @throws InvalidRequestException on the wrong request
+     * @throws ConfigurationException 
      */
     private IMutation mutationForKey(CFDefinition cfDef, ByteBuffer key, ColumnNameBuilder builder, UpdateParameters params, ConsistencyLevel cl)
-    throws InvalidRequestException
+    throws InvalidRequestException, ConfigurationException
     {
         validateKey(key);
 
-        QueryProcessor.validateKey(key);
+        QueryProcessor.validateKey(key);	
         RowMutation rm = new RowMutation(cfDef.cfm.ksName, key);
         ColumnFamily cf = rm.addOrGet(cfDef.cfm);
 
@@ -256,9 +262,71 @@ public class UpdateStatement extends ModificationStatement
         {
             for (Operation op : processedColumns)
                 op.execute(key, cf, builder.copy(), params);
+        }      
+        
+        if (cfDef.cfm.ksName.equals(Metadata.MetaData_KS) && cfDef.cfm.cfName.equals(Metadata.MetadataRegistry_CF)) {  
+        	Iterator<IColumn> itr = cf.getSortedColumns().iterator();
+        	String dataTag = itr.next().getString(cf.getComparator());
+        	dataTag = dataTag.substring(0,dataTag.indexOf(':'));
+        	String adminTag = itr.hasNext() ? new String(itr.next().value().array()) : ""; 	
+        	return MetadataRegistry.instance.add(new String(key.array()), dataTag, adminTag);
+        }
+        else if(!cfDef.cfm.ksName.equals(Table.SYSTEM_KS)){
+        	String dataTag = (operations == null)? Metadata.Insert_Tag : Metadata.Update_Tag;
+        	announceMetadataLogMigration(cfDef, key, cf, dataTag);
         }
 
         return type == Type.COUNTER ? new CounterMutation(rm, cl) : rm;
+    }
+    
+    
+    private void announceMetadataLogMigration(CFDefinition cfDef, ByteBuffer key, ColumnFamily cf, String dataTag){
+    	
+    	String partitioningKeyName = "";	
+		try {
+			if (cfDef.hasCompositeKey) {
+				for (int i = 0; i < cfDef.keys.size(); i++) {
+					ByteBuffer bb = CompositeType.extractComponent(key, i);
+					if (i != 0) partitioningKeyName += ".";
+					partitioningKeyName += ByteBufferUtil.string(bb);
+				}
+			} else {
+				partitioningKeyName = ByteBufferUtil.string(key);
+			}
+		} catch (CharacterCodingException e) {
+			return;
+		}
+			
+    	// Iterating Column Family to get columns
+    	//ArrayList<Pair<String,String>> targets = new ArrayList<Pair<String,String>>();
+    	partitioningKeyName = cfDef.cfm.ksName + "." + cfDef.cfm.cfName + "." + partitioningKeyName;
+    	String allValues = ""; 
+    	
+    	for( IColumn col: cf.getSortedColumns()){
+    		String colName = col.getString(cf.getComparator());
+
+    		// filter column markers
+    		if(colName.indexOf("::") != -1)
+    			continue;
+    		
+    		int colNameBoundary = colName.indexOf("false");
+    		if(colNameBoundary == -1) 
+    			colNameBoundary = colName.indexOf("true");
+
+    		colName = colName.substring(0, colNameBoundary-1);
+    		colName = colName.replace(':', '.');
+    		
+    		String colVal = new String(col.value().array());
+    		
+    		if(!colName.equals("")){
+        		allValues +=  colName + "=" + colVal + ";";
+        		//targets.add( Pair.create(partitioningKeyName + "." + colName, colVal));
+    		}
+    	}
+    	//targets.add( Pair.create(partitioningKeyName, allValues));
+    	
+    	String client = (clientState == null)? "" :  clientState.getUser().getName();
+    	MetadataLog.announce(partitioningKeyName, dataTag, client, allValues);
     }
 
     public ParsedStatement.Prepared prepare(ColumnSpecification[] boundNames) throws InvalidRequestException
@@ -278,7 +346,7 @@ public class UpdateStatement extends ModificationStatement
                 throw new InvalidRequestException("Unmatched column names/values");
             if (columnNames.isEmpty())
                 throw new InvalidRequestException("No columns provided to INSERT");
-
+            
             for (int i = 0; i < columnNames.size(); i++)
             {
                 CFDefinition.Name name = cfDef.get(columnNames.get(i));
@@ -318,7 +386,7 @@ public class UpdateStatement extends ModificationStatement
                 CFDefinition.Name name = cfDef.get(entry.left);
                 if (name == null)
                     throw new InvalidRequestException(String.format("Unknown identifier %s", entry.left));
-
+               
                 Operation operation = entry.right.prepare(name);
                 operation.collectMarkerSpecification(boundNames);
 

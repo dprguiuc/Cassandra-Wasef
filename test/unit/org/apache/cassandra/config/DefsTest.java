@@ -223,7 +223,7 @@ public class DefsTest extends SchemaLoader
         store.forceBlockingFlush();
         assert store.directories.sstableLister().list().size() > 0;
 
-        MigrationManager.announceColumnFamilyDrop(ks.name, cfm.cfName);
+        MigrationManager.announceColumnFamilyDrop(ks.name, cfm.cfName, null);
 
         assert !Schema.instance.getTableDefinition(ks.name).cfMetaData().containsKey(cfm.cfName);
 
@@ -296,7 +296,7 @@ public class DefsTest extends SchemaLoader
         store.forceBlockingFlush();
         assert store.directories.sstableLister().list().size() > 0;
 
-        MigrationManager.announceKeyspaceDrop(ks.name);
+        MigrationManager.announceKeyspaceDrop(ks.name, null);
 
         assert Schema.instance.getTableDefinition(ks.name) == null;
 
@@ -343,7 +343,7 @@ public class DefsTest extends SchemaLoader
             rm.add(new QueryPath(cfm.cfName, null, ByteBufferUtil.bytes(("col" + i))), ByteBufferUtil.bytes("anyvalue"), 1L);
         rm.apply();
 
-        MigrationManager.announceKeyspaceDrop(ks.name);
+        MigrationManager.announceKeyspaceDrop(ks.name, null);
 
         assert Schema.instance.getTableDefinition(ks.name) == null;
     }
@@ -400,7 +400,7 @@ public class DefsTest extends SchemaLoader
         KSMetaData newBadKs2 = KSMetaData.testMetadata(cf.ksName + "trash", SimpleStrategy.class, KSMetaData.optsWithRF(4));
         try
         {
-            MigrationManager.announceKeyspaceUpdate(newBadKs2);
+            MigrationManager.announceKeyspaceUpdate(newBadKs2, null);
             throw new AssertionError("Should not have been able to update a KS with an invalid KS name.");
         }
         catch (ConfigurationException ex)
@@ -409,7 +409,7 @@ public class DefsTest extends SchemaLoader
         }
 
         KSMetaData newKs = KSMetaData.testMetadata(cf.ksName, OldNetworkTopologyStrategy.class, KSMetaData.optsWithRF(1));
-        MigrationManager.announceKeyspaceUpdate(newKs);
+        MigrationManager.announceKeyspaceUpdate(newKs, null);
 
         KSMetaData newFetchedKs = Schema.instance.getKSMetaData(newKs.name);
         assert newFetchedKs.strategyClass.equals(newKs.strategyClass);

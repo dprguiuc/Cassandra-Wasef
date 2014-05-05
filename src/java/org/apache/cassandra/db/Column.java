@@ -336,8 +336,13 @@ public class Column implements IColumn
     {
         return new Column(decomposeName(names), InetAddressType.instance.decompose(value), timestamp);
     }
+    
+    public static Column create(long value, long timestamp, String... names)
+    {
+        return new Column(decomposeName(names), LongType.instance.decompose(value), timestamp);
+    }
 
-    static ByteBuffer decomposeName(String... names)
+    public static ByteBuffer decomposeName(String... names)
     {
         assert names.length > 0;
 

@@ -19,36 +19,46 @@ package org.apache.cassandra.service;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
-
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.AlreadyExistsException;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.exceptions.OverloadedException;
 import org.apache.cassandra.gms.*;
 import org.apache.cassandra.io.IVersionedSerializer;
+import org.apache.cassandra.io.util.FastByteArrayOutputStream;
+import org.apache.cassandra.locator.AbstractReplicationStrategy;
+import org.apache.cassandra.metadata.*;
+import org.apache.cassandra.net.CompactEndpointSerializationHelper;
 import org.apache.cassandra.net.MessageOut;
 import org.apache.cassandra.net.MessagingService;
+import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
 import org.apache.cassandra.utils.WrappedRunnable;
+
+import com.google.common.collect.Iterables;
 
 public class MigrationManager implements IEndpointStateChangeSubscriber
 {
@@ -231,7 +241,7 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
         announce(cfm.toSchema(FBUtilities.timestampMicros()));
     }
 
-    public static void announceKeyspaceUpdate(KSMetaData ksm) throws ConfigurationException
+    public static void announceKeyspaceUpdate(KSMetaData ksm, ClientState state) throws ConfigurationException
     {
         ksm.validate();
 
@@ -241,6 +251,11 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
 
         logger.info(String.format("Update Keyspace '%s' From %s To %s", ksm.name, oldKsm, ksm));
         announce(oldKsm.toSchemaUpdate(ksm, FBUtilities.timestampMicros()));
+        
+        // prepare metadata_log  
+        String logValue = "Old: " + oldKsm.strategyClass.getSimpleName() + "," + oldKsm.strategyOptions.toString() + "," + oldKsm.durableWrites + ";" +
+        		"New: " + ksm.strategyClass.getSimpleName() + "," + ksm.strategyOptions.toString() + "," + ksm.durableWrites;
+        MetadataLog.announce(ksm.name, Metadata.AlterKeyspace_Tag, state, logValue);
     }
 
     public static void announceColumnFamilyUpdate(CFMetaData cfm) throws ConfigurationException
@@ -256,8 +271,8 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
         logger.info(String.format("Update ColumnFamily '%s/%s' From %s To %s", cfm.ksName, cfm.cfName, oldCfm, cfm));
         announce(oldCfm.toSchemaUpdate(cfm, FBUtilities.timestampMicros()));
     }
-
-    public static void announceKeyspaceDrop(String ksName) throws ConfigurationException
+       
+    public static void announceKeyspaceDrop(String ksName, ClientState state) throws ConfigurationException
     {
         KSMetaData oldKsm = Schema.instance.getKSMetaData(ksName);
         if (oldKsm == null)
@@ -265,9 +280,13 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
 
         logger.info(String.format("Drop Keyspace '%s'", oldKsm.name));
         announce(oldKsm.dropFromSchema(FBUtilities.timestampMicros()));
+        
+        // prepare metadata_log  
+        String log_value = oldKsm.strategyClass.getSimpleName() + "," + oldKsm.strategyOptions.toString() + "," + oldKsm.durableWrites;
+        MetadataLog.announce(oldKsm.name, Metadata.DropKeyspace_Tag, state, log_value);
     }
 
-    public static void announceColumnFamilyDrop(String ksName, String cfName) throws ConfigurationException
+    public static void announceColumnFamilyDrop(String ksName, String cfName, ClientState state) throws ConfigurationException
     {
         CFMetaData oldCfm = Schema.instance.getCFMetaData(ksName, cfName);
         if (oldCfm == null)
@@ -275,6 +294,9 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
 
         logger.info(String.format("Drop ColumnFamily '%s/%s'", oldCfm.ksName, oldCfm.cfName));
         announce(oldCfm.dropFromSchema(FBUtilities.timestampMicros()));
+        
+        // prepare metadata_log  
+        MetadataLog.announce(oldCfm.ksName + "." + oldCfm.cfName, Metadata.DropColumnFamily_Tag, state, "");
     }
 
     /**
@@ -318,7 +340,7 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
         }
         return f;
     }
-
+    
     /**
      * Announce my version passively over gossip.
      * Used to notify nodes as they arrive in the cluster.
@@ -430,5 +452,5 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
                 size += RowMutation.serializer.serializedSize(rm, version);
             return size;
         }
-    }
+    } 
 }

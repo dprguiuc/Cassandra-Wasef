@@ -57,7 +57,7 @@ import org.apache.cassandra.utils.Pair;
 public class NodeCmd
 {
     private static final String HISTORYFILE = "nodetool.history";
-    private static final Pair<String, String> SNAPSHOT_COLUMNFAMILY_OPT = Pair.create("cf", "column-family");
+    private static final Pair<String, String> SNAPSHOT_COLUMNFAMILY_OPT = Pair.create("cf", "column-family") ;
     private static final Pair<String, String> HOST_OPT = Pair.create("h", "host");
     private static final Pair<String, String> PORT_OPT = Pair.create("p", "port");
     private static final Pair<String, String> USERNAME_OPT = Pair.create("u", "username");
@@ -71,6 +71,7 @@ public class NodeCmd
     private static final Pair<String, String> END_TOKEN_OPT = Pair.create("et", "end-token");
     private static final Pair<String, String> UPGRADE_ALL_SSTABLE_OPT = Pair.create("a", "include-all-sstables");
     private static final Pair<String, String> NO_SNAPSHOT = Pair.create("ns", "no-snapshot");
+    private static final Pair<String, String> VERIFY_DECOMMISSION = Pair.create("verify", "verify");
 
     private static final String DEFAULT_HOST = "127.0.0.1";
     private static final int DEFAULT_PORT = 7199;
@@ -95,6 +96,7 @@ public class NodeCmd
         options.addOption(END_TOKEN_OPT, true, "token at which repair range ends");
         options.addOption(UPGRADE_ALL_SSTABLE_OPT, false, "includes sstables that are already on the most recent version during upgradesstables");
         options.addOption(NO_SNAPSHOT, false, "disables snapshot creation for scrub");
+        options.addOption(VERIFY_DECOMMISSION, true, "verifies decommission");
     }
 
     public NodeCmd(NodeProbe probe)
@@ -1132,12 +1134,17 @@ public class NodeCmd
                     break;
 
                 case DECOMMISSION :
-                    if (arguments.length > 0)
-                    {
-                        System.err.println("Decommission will decommission the node you are connected to and does not take arguments!");
-                        System.exit(1);
-                    }
-                    probe.decommission();
+//                    if (arguments.length > 0)
+//                    {
+//                        System.err.println("Decommission will decommission the node you are connected to and does not take arguments!");
+//                        System.exit(1);
+//                    }
+                	if( cmd.getOptionValue(VERIFY_DECOMMISSION.left) != null ){
+                		System.out.println(probe.verifyDecommission(cmd.getOptionValue(VERIFY_DECOMMISSION.left)));
+                	}
+                	else if(arguments.length == 0){
+                		probe.decommission();
+                	}
                     break;
 
                 case DRAIN :

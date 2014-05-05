@@ -458,6 +458,11 @@ public class NodeProbe
     {
         ssProxy.decommission();
     }
+    
+    public String verifyDecommission(String targetNode) throws InterruptedException
+    {
+        return ssProxy.verifyDecommission(targetNode);
+    }
 
     public void move(String newToken) throws IOException, InterruptedException
     {
@@ -566,7 +571,7 @@ public class NodeProbe
     {
         try
         {
-            ssProxy.truncate(tableName, cfName);
+            ssProxy.truncate(tableName, cfName, "NodeProbe");
         }
         catch (TimeoutException e)
         {

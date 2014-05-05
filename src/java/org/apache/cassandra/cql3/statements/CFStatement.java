@@ -27,10 +27,12 @@ import org.apache.cassandra.exceptions.InvalidRequestException;
 public abstract class CFStatement extends ParsedStatement
 {
     protected final CFName cfName;
+    protected ClientState clientState;
 
     protected CFStatement(CFName cfName)
     {
         this.cfName = cfName;
+        clientState = null;
     }
 
     public void prepareKeyspace(ClientState state) throws InvalidRequestException
@@ -51,5 +53,9 @@ public abstract class CFStatement extends ParsedStatement
     public String columnFamily()
     {
         return cfName.getColumnFamily();
+    }
+    
+    public void setClientState(ClientState clientState){
+    	this.clientState = clientState;
     }
 }

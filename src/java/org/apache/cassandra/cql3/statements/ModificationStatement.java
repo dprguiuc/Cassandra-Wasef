@@ -30,6 +30,7 @@ import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.ExpiringColumn;
+import org.apache.cassandra.metadata.Metadata;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.service.StorageProxy;
@@ -91,7 +92,7 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
         Collection<? extends IMutation> mutations = getMutations(variables, false, cl, queryState.getTimestamp());
         if (mutations.isEmpty())
             return null;
-
+        
         switch (type)
         {
             case LOGGED:

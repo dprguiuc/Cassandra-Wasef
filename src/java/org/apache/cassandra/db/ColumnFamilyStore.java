@@ -26,14 +26,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
+
 import javax.management.*;
 
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Futures;
+
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
 import org.apache.cassandra.cache.RowCacheSentinel;
@@ -56,6 +57,7 @@ import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.LongType;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -65,6 +67,7 @@ import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.metrics.ColumnFamilyMetrics;
 import org.apache.cassandra.service.CacheService;
+import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.IndexExpression;
 import org.apache.cassandra.tracing.Tracing;
@@ -811,7 +814,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             // remove columns if
             // (a) the column itself is gcable or
             // (b) the column is shadowed by a CF tombstone
-            if (c.getLocalDeletionTime() < gcBefore || cf.deletionInfo().isDeleted(c))
+            // (c) the column has been dropped from the CF schema (CQL3 tables only)
+            if (c.getLocalDeletionTime() < gcBefore || cf.deletionInfo().isDeleted(c) || isDroppedColumn((Column)c, cf.metadata()))
             {
                 iter.remove();
                 indexer.remove(c);
@@ -910,8 +914,40 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     {
         data.addSSTables(sstables);
         CompactionManager.instance.submitBackground(this);
+    }  
+     
+    // returns true if
+    // 1. this column has been dropped from schema and
+    // 2. if it has been re-added since then, this particular column was inserted before the last drop
+    private static boolean isDroppedColumn(Column c, CFMetaData meta)
+    {    	
+    	if( meta.ksName.equals(Table.SYSTEM_KS))
+    		return false;
+    	
+		if (meta.getDroppedColumns().isEmpty())
+			return false;
+
+		// check if the column is permanently dropped
+		Long mtd = meta.getDroppedColumns().get(meta.comparator.getString(c.name));
+		
+		if(mtd == null)
+			return false;
+	
+		return c.timestamp() <= mtd;
     }
 
+    private void removeDroppedColumns(ColumnFamily cf)
+    {
+    	if (cf == null)
+			return;
+    		 
+        Iterator<IColumn> iter = cf.iterator();
+        while (iter.hasNext())
+            if (isDroppedColumn((Column)iter.next(), metadata))
+                iter.remove();
+    }
+      
+    
     /**
      * Calculate expected file size of SSTable after compaction.
      *
@@ -1221,6 +1257,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                 result = cf.isSuper() ? removeDeleted(cf, gcBefore) : removeDeletedCF(cf, gcBefore);
 
             }
+            removeDroppedColumns(result);
         }
         finally
         {
@@ -1503,6 +1540,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                 Row rawRow = rowIterator.next();
                 total++;
                 ColumnFamily data = rawRow.cf;
+                
+                //ColumnFamily metadataCF = MetadataTags.queryColumnFamily("");
 
                 if (rowIterator.needsFiltering())
                 {
@@ -1514,15 +1553,19 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                         if (cf != null)
                             data.addAll(cf, HeapAllocator.instance);
                     }
-
+                    
+                    removeDroppedColumns(data);
+                                        
                     if (!filter.isSatisfiedBy(data, null))
                         continue;
 
                     logger.trace("{} satisfies all filter expressions", data);
                     // cut the resultset back to what was requested, if necessary
                     data = filter.prune(data);
+                }else{
+                	removeDroppedColumns(data);
                 }
-
+              
                 rows.add(new Row(rawRow.key, data));
                 matched++;
 

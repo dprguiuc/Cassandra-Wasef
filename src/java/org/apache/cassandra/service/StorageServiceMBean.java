@@ -298,7 +298,13 @@ public interface StorageServiceMBean extends NotificationEmitter
      * transfer this node's data to other machines and remove it from service.
      */
     public void decommission() throws InterruptedException;
-
+    
+    
+    /**
+     * verify decommission
+     */
+    public String verifyDecommission(String targetNode) throws InterruptedException;
+    
     /**
      * @param newToken token to move this node to.
      * This node will unload its data onto its neighbors, and bootstrap to the new token.
@@ -348,7 +354,7 @@ public interface StorageServiceMBean extends NotificationEmitter
      * @param keyspace The keyspace to delete from
      * @param columnFamily The column family to delete data from.
      */
-    public void truncate(String keyspace, String columnFamily)throws TimeoutException, IOException;
+    public void truncate(String keyspace, String columnFamily, String client)throws TimeoutException, IOException;
 
     /**
      * given a list of tokens (representing the nodes in the cluster), returns

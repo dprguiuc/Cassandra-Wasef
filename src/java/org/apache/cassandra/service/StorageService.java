@@ -29,20 +29,20 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
 import javax.management.MBeanServer;
 import javax.management.Notification;
 import javax.management.NotificationBroadcasterSupport;
 import javax.management.ObjectName;
 
 import com.google.common.collect.*;
-
 import com.google.common.util.concurrent.AtomicDouble;
+
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.log4j.Level;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.auth.Auth;
 import org.apache.cassandra.concurrent.DebuggableScheduledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.Stage;
@@ -64,6 +64,8 @@ import org.apache.cassandra.io.sstable.SSTableDeletingTask;
 import org.apache.cassandra.io.sstable.SSTableLoader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.*;
+import org.apache.cassandra.metadata.Metadata;
+import org.apache.cassandra.metadata.MetadataLog;
 import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.net.IAsyncResult;
 import org.apache.cassandra.net.MessageOut;
@@ -2841,6 +2843,8 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
         setMode(Mode.LEAVING, "streaming data to other nodes", true);
 
+        recordMetadata(rangesToStream);
+        
         CountDownLatch latch = streamRanges(rangesToStream);
         CountDownLatch hintsLatch = streamHints();
 
@@ -2858,6 +2862,65 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         logger.debug("stream acks all received.");
         leaveRing();
         onFinish.run();
+    }
+    
+    private void recordMetadata(Map<String, Multimap<Range<Token>, InetAddress>> movedRanges){
+    	
+    	for(String table : movedRanges.keySet()){
+    		for(Multimap<Range<Token>, InetAddress> rangeAddress : movedRanges.values()){
+    			
+    			for(Map.Entry<Range<Token>, InetAddress> entry: rangeAddress.entries()){
+    			
+    				String value = table +
+    						//":(" + entry.getKey().right.toString() + "," + entry.getKey().left.toString() + "):" +
+    						":" + entry.getKey().right.toString() + ":" + 
+    						entry.getValue().getHostAddress();
+    				
+    				Metadata.mutate(MetadataLog.add(FBUtilities.getBroadcastAddress().getHostName(),
+    						FBUtilities.timestampMicros(), "", "decommission", value, ""));
+    			}
+    		}
+    	}
+    }
+    
+    public String verifyDecommission(String targetNode){
+    	ColumnFamily cf = MetadataLog.remoteStorageQuery(targetNode, "decommission");
+    	String value;
+    	boolean isSuccessful = true;
+    	if (cf != null && !cf.isEmpty()) {
+    		Token.TokenFactory tf = StorageService.getPartitioner().getTokenFactory();
+    		
+    		for(IColumn col : cf.getSortedColumns()){
+				value = new String(col.value().array());
+			
+				if(value != null && !value.equals("")){
+					String table = value.substring(0,value.indexOf(":"));
+					value = value.substring(value.indexOf(":") + 1);
+					String token = value.substring(0,value.indexOf(":"));
+					String addressToVerify = value.substring(value.indexOf(":") + 1);
+															
+					List<InetAddress> ipAddresses =  Table.open(table).getReplicationStrategy()
+							.calculateNaturalEndpoints(tf.fromString(token), tokenMetadata.cloneOnlyTokenMap());
+					boolean isFound = false;
+					for(InetAddress address: ipAddresses){
+						if(address.getHostAddress().equals(addressToVerify))
+						{
+							logger.error("verifed decommission for " + addressToVerify);
+							Metadata.mutate(MetadataLog.add(FBUtilities.getBroadcastAddress().getHostName(),
+		    						FBUtilities.timestampMicros(), "", "verifed decommission for " + addressToVerify, value, ""));
+							isFound = true;
+							break;
+						}
+					}	
+					
+					if(!isFound){
+						isSuccessful = false;
+					}
+				}
+    		}
+    	}
+    	
+    	return (isSuccessful)? "successfully verified" : "failed varification";
     }
 
     private CountDownLatch streamHints()
@@ -3455,11 +3518,11 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         return old;
     }
 
-    public void truncate(String keyspace, String columnFamily) throws TimeoutException, IOException
+    public void truncate(String keyspace, String columnFamily, String client) throws TimeoutException, IOException
     {
         try
         {
-            StorageProxy.truncateBlocking(keyspace, columnFamily);
+            StorageProxy.truncateBlocking(keyspace, columnFamily, client);
         }
         catch (UnavailableException e)
         {

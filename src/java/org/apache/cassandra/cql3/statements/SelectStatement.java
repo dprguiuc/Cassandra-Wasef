@@ -71,6 +71,7 @@ public class SelectStatement implements CQLStatement
     private boolean onToken;
     private boolean isKeyRange;
     private boolean keyIsInRelation;
+    protected ClientState clientState;
 
     private static enum Bound
     {
@@ -112,6 +113,10 @@ public class SelectStatement implements CQLStatement
     public void validate(ClientState state) throws InvalidRequestException
     {
         // Nothing to do, all validation has been done by RawStatement.prepare()
+    }
+    
+    public void setClientState(ClientState clientState){
+    	this.clientState = clientState;
     }
 
     public ResultMessage.Rows execute(ConsistencyLevel cl, QueryState state, List<ByteBuffer> variables) throws RequestExecutionException, RequestValidationException

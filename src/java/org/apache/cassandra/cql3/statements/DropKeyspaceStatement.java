@@ -57,7 +57,7 @@ public class DropKeyspaceStatement extends SchemaAlteringStatement
 
     public void announceMigration() throws ConfigurationException
     {
-        MigrationManager.announceKeyspaceDrop(keyspace);
+        MigrationManager.announceKeyspaceDrop(keyspace, clientState);
     }
 
     public ResultMessage.SchemaChange.Change changeType()

@@ -63,4 +63,12 @@ public interface CQLStatement
      * @param state the current query state
      */
     public ResultMessage executeInternal(QueryState state) throws RequestValidationException, RequestExecutionException;
+    
+    
+    /**
+     * Set statement client state for logging provenance data
+     * 
+     * @param state the current client state
+     */
+    public void setClientState(ClientState state);
 }

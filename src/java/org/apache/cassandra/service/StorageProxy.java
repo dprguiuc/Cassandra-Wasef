@@ -22,31 +22,35 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import com.google.common.base.Function;
 import com.google.common.collect.*;
+
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.ReadRepairDecision;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.cql3.CFDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
+import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.db.marshal.UUIDType;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Bounds;
@@ -59,9 +63,11 @@ import org.apache.cassandra.io.util.FastByteArrayOutputStream;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.IEndpointSnitch;
 import org.apache.cassandra.locator.TokenMetadata;
+import org.apache.cassandra.metadata.Metadata;
 import org.apache.cassandra.metrics.ClientRequestMetrics;
 import org.apache.cassandra.metrics.ReadRepairMetrics;
 import org.apache.cassandra.net.*;
+import org.apache.cassandra.service.MigrationManager.MigrationsSerializer;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -477,7 +483,7 @@ public class StorageProxy implements StorageProxyMBean
         Map<String, Collection<InetAddress>> dcGroups = null;
 
         for (InetAddress destination : targets)
-        {
+        {       	
             // avoid OOMing due to excess hints.  we need to do this check even for "live" nodes, since we can
             // still generate hints for those if it's overloaded or simply dead but not yet known-to-be-dead.
             // The idea is that if we have over maxHintsInProgress hints in flight, this is probably due to
@@ -1517,7 +1523,7 @@ public class StorageProxy implements StorageProxyMBean
      * @throws TimeoutException
      * @throws IOException
      */
-    public static void truncateBlocking(String keyspace, String cfname) throws UnavailableException, TimeoutException, IOException
+    public static void truncateBlocking(String keyspace, String cfname, String client) throws UnavailableException, TimeoutException, IOException
     {
         logger.debug("Starting a blocking truncate operation on keyspace {}, CF {}", keyspace, cfname);
         if (isAnyHostDown())
@@ -1536,7 +1542,7 @@ public class StorageProxy implements StorageProxyMBean
 
         // Send out the truncate calls and track the responses with the callbacks.
         Tracing.trace("Enqueuing truncate messages to hosts {}", allEndpoints);
-        final Truncation truncation = new Truncation(keyspace, cfname);
+        final Truncation truncation = new Truncation(keyspace, cfname, client);
         MessageOut<Truncation> message = truncation.createMessage();
         for (InetAddress endpoint : allEndpoints)
             MessagingService.instance().sendRR(message, endpoint, responseHandler);

@@ -265,7 +265,7 @@ public class SerializationsTest extends AbstractSerializationsTester
 
     private void testTruncateWrite() throws IOException
     {
-        Truncation tr = new Truncation(Statics.KS, "Doesn't Really Matter");
+        Truncation tr = new Truncation(Statics.KS, "Doesn't Really Matter", "");
         TruncateResponse aff = new TruncateResponse(Statics.KS, "Doesn't Matter Either", true);
         TruncateResponse neg = new TruncateResponse(Statics.KS, "Still Doesn't Matter", false);
         DataOutputStream out = getOutput("db.Truncation.bin");

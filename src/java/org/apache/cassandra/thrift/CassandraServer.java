@@ -1298,7 +1298,7 @@ public class CassandraServer implements Cassandra.Iface
         {
             String keyspace = cState.getKeyspace();
             cState.hasColumnFamilyAccess(keyspace, column_family, Permission.DROP);
-            MigrationManager.announceColumnFamilyDrop(keyspace, column_family);
+            MigrationManager.announceColumnFamilyDrop(keyspace, column_family, state());
             return Schema.instance.getVersion().toString();
         }
         catch (RequestValidationException e)
@@ -1354,7 +1354,7 @@ public class CassandraServer implements Cassandra.Iface
             ThriftValidation.validateKeyspaceNotSystem(keyspace);
             state().hasKeyspaceAccess(keyspace, Permission.DROP);
 
-            MigrationManager.announceKeyspaceDrop(keyspace);
+            MigrationManager.announceKeyspaceDrop(keyspace, state());
             return Schema.instance.getVersion().toString();
         }
         catch (RequestValidationException e)
@@ -1378,8 +1378,8 @@ public class CassandraServer implements Cassandra.Iface
             ThriftValidation.validateTable(ks_def.name);
             if (ks_def.getCf_defs() != null && ks_def.getCf_defs().size() > 0)
                 throw new InvalidRequestException("Keyspace update must not contain any column family definitions.");
-
-            MigrationManager.announceKeyspaceUpdate(KSMetaData.fromThrift(ks_def));
+            
+            MigrationManager.announceKeyspaceUpdate(KSMetaData.fromThrift(ks_def), state());
             return Schema.instance.getVersion().toString();
         }
         catch (RequestValidationException e)
@@ -1437,7 +1437,7 @@ public class CassandraServer implements Cassandra.Iface
             schedule(DatabaseDescriptor.getTruncateRpcTimeout());
             try
             {
-                StorageProxy.truncateBlocking(cState.getKeyspace(), cfname);
+                StorageProxy.truncateBlocking(cState.getKeyspace(), cfname, state().getUser().getName());
             }
             finally
             {

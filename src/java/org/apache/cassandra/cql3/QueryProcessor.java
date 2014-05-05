@@ -98,6 +98,7 @@ public class QueryProcessor
         ClientState clientState = queryState.getClientState();
         statement.validate(clientState);
         statement.checkAccess(clientState);
+        statement.setClientState(clientState);
         ResultMessage result = statement.execute(cl, queryState, variables);
         return result == null ? new ResultMessage.Void() : result;
     }

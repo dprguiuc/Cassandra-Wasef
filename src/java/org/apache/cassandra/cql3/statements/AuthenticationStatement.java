@@ -29,6 +29,8 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 
 public abstract class AuthenticationStatement extends ParsedStatement implements CQLStatement
 {
+	protected ClientState clientState;
+	
     @Override
     public Prepared prepare()
     {
@@ -52,6 +54,10 @@ public abstract class AuthenticationStatement extends ParsedStatement implements
     {
         // executeInternal is for local query only, thus altering users doesn't make sense and is not supported
         throw new UnsupportedOperationException();
+    }
+    
+    public void setClientState(ClientState state){
+    	clientState = state;
     }
 }
 

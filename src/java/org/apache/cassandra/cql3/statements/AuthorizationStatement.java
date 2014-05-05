@@ -30,6 +30,8 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 
 public abstract class AuthorizationStatement extends ParsedStatement implements CQLStatement
 {
+	protected ClientState clientState;
+	
     @Override
     public Prepared prepare()
     {
@@ -60,5 +62,9 @@ public abstract class AuthorizationStatement extends ParsedStatement implements 
         if (resource.isColumnFamilyLevel() && resource.getKeyspace() == null)
             return DataResource.columnFamily(state.getKeyspace(), resource.getColumnFamily());
         return resource;
+    }
+    
+    public void setClientState(ClientState state){
+    	clientState = state;
     }
 }

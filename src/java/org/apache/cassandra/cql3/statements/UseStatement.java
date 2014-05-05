@@ -31,6 +31,7 @@ import org.apache.cassandra.service.QueryState;
 public class UseStatement extends ParsedStatement implements CQLStatement
 {
     private final String keyspace;
+    protected ClientState clientState;
 
     public UseStatement(String keyspace)
     {
@@ -49,6 +50,10 @@ public class UseStatement extends ParsedStatement implements CQLStatement
 
     public void validate(ClientState state) throws InvalidRequestException
     {
+    }
+    
+    public void setClientState(ClientState clientState){
+    	this.clientState = clientState;
     }
 
     public ResultMessage execute(ConsistencyLevel cl, QueryState state, List<ByteBuffer> variables) throws InvalidRequestException

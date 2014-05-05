@@ -25,13 +25,12 @@ import java.util.concurrent.TimeoutException;
 
 import com.google.common.base.Predicates;
 import com.google.common.collect.Maps;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.cli.CliUtils;
-import org.apache.cassandra.db.CounterColumn;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.*;
@@ -42,6 +41,7 @@ import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.exceptions.*;
+import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.MigrationManager;
@@ -61,7 +61,6 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.SemanticVersion;
 import org.antlr.runtime.*;
-
 
 import static org.apache.cassandra.thrift.ThriftValidation.validateColumnFamily;
 
@@ -571,7 +570,7 @@ public class QueryProcessor
 
                 try
                 {
-                    StorageProxy.truncateBlocking(keyspace, columnFamily.right);
+                    StorageProxy.truncateBlocking(keyspace, columnFamily.right, clientState.getUser().getName());
                 }
                 catch (TimeoutException e)
                 {
@@ -715,7 +714,7 @@ public class QueryProcessor
 
                 try
                 {
-                    MigrationManager.announceKeyspaceDrop(deleteKeyspace);
+                    MigrationManager.announceKeyspaceDrop(deleteKeyspace, clientState);
                 }
                 catch (ConfigurationException e)
                 {
@@ -733,7 +732,7 @@ public class QueryProcessor
 
                 try
                 {
-                    MigrationManager.announceColumnFamilyDrop(keyspace, deleteColumnFamily);
+                    MigrationManager.announceColumnFamilyDrop(keyspace, deleteColumnFamily, clientState);
                 }
                 catch (ConfigurationException e)
                 {
